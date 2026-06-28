@@ -88,7 +88,23 @@ def init_db(db_path=None):
             except sqlite3.OperationalError:
                 pass
                 
-            conn.executescript(schema_script)
+            cursor = conn.cursor()
+            cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='sandi_logs'")
+            row = cursor.fetchone()
+            if row and 'WXREV' not in row[0]:
+                logger.info("Migrating CHECK constraint to support WXREV...")
+                conn.execute("PRAGMA foreign_keys=off;")
+                conn.execute("ALTER TABLE sandi_logs RENAME TO sandi_logs_old;")
+                conn.executescript(schema_script)
+                cursor.execute("PRAGMA table_info(sandi_logs_old)")
+                cols = [col[1] for col in cursor.fetchall()]
+                col_str = ", ".join(cols)
+                conn.execute(f"INSERT INTO sandi_logs ({col_str}) SELECT {col_str} FROM sandi_logs_old;")
+                conn.execute("DROP TABLE sandi_logs_old;")
+                conn.execute("PRAGMA foreign_keys=on;")
+            else:
+                conn.executescript(schema_script)
+                
             conn.execute("CREATE INDEX IF NOT EXISTS idx_target_utc ON sandi_logs(target_utc);")
             conn.commit()
             logger.info("Database initialized successfully.")
