@@ -66,7 +66,8 @@ def init_db(db_path=None):
             CREATE TABLE IF NOT EXISTS sandi_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 waktu_input_utc TEXT NOT NULL,
-                tipe_sandi TEXT NOT NULL CHECK (tipe_sandi IN ('METAR', 'SPECI', 'SYNOP', 'TAFOR')),
+                tipe_sandi TEXT NOT NULL CHECK (tipe_sandi IN ('METAR', 'SPECI', 'SYNOP', 'TAFOR', 'WXREV')),
+                stasiun TEXT DEFAULT 'UNKNOWN',
                 isi_sandi TEXT NOT NULL,
                 target_utc TEXT NOT NULL,
                 status TEXT DEFAULT 'Antri' CHECK (status IN ('Antri', 'Berhasil', 'Gagal', 'Dibatalkan')),
@@ -75,13 +76,20 @@ def init_db(db_path=None):
                 waktu_kirim_utc TEXT,
                 durasi_kirim_ms INTEGER
             );
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_antri ON sandi_logs(tipe_sandi, target_utc) WHERE status='Antri';
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_antri ON sandi_logs(tipe_sandi, target_utc, stasiun) WHERE status='Antri';
             CREATE INDEX IF NOT EXISTS idx_status ON sandi_logs(status);
             CREATE INDEX IF NOT EXISTS idx_target_utc ON sandi_logs(target_utc);
             """
             
         with get_connection(db_path) as conn:
+            try:
+                conn.execute("ALTER TABLE sandi_logs ADD COLUMN stasiun TEXT DEFAULT 'UNKNOWN'")
+                logger.info("Migration: Added 'stasiun' column to sandi_logs.")
+            except sqlite3.OperationalError:
+                pass
+                
             conn.executescript(schema_script)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_target_utc ON sandi_logs(target_utc);")
             conn.commit()
             logger.info("Database initialized successfully.")
     except sqlite3.DatabaseError as e:
@@ -92,11 +100,11 @@ def init_db(db_path=None):
         raise
 
 @retry_on_locked
-def can_schedule(tipe: str, target_utc: datetime, db_path=None) -> tuple[bool, str]:
+def can_schedule(tipe: str, target_utc: datetime, stasiun: str = '', db_path=None) -> tuple[bool, str]:
     target_str = target_utc.strftime('%Y-%m-%dT%H:%M:%SZ')
     with get_connection(db_path) as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id, status FROM sandi_logs WHERE tipe_sandi=? AND target_utc=? AND status='Antri'", (tipe, target_str))
+        cursor.execute("SELECT id, status FROM sandi_logs WHERE tipe_sandi=? AND target_utc=? AND stasiun=? AND status='Antri'", (tipe, target_str, stasiun))
         row = cursor.fetchone()
         if row:
             return (False, f"Duplikat: ID #{row['id']}")
@@ -111,8 +119,8 @@ def insert_sandi(parse_result, now_utc: datetime, db_path=None) -> int:
         try:
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO sandi_logs (waktu_input_utc, tipe_sandi, isi_sandi, target_utc, status) VALUES (?, ?, ?, ?, 'Antri')",
-                (input_str, parse_result.tipe, parse_result.raw, target_str)
+                "INSERT INTO sandi_logs (waktu_input_utc, tipe_sandi, stasiun, isi_sandi, target_utc, status) VALUES (?, ?, ?, ?, ?, 'Antri')",
+                (input_str, parse_result.tipe, parse_result.stasiun, parse_result.raw, target_str)
             )
             conn.commit()
             return cursor.lastrowid
@@ -129,14 +137,14 @@ def get_antri(db_path=None) -> list[dict]:
         return [dict(row) for row in cursor.fetchall()]
 
 @retry_on_locked
-def get_riwayat(limit: int = 50, db_path=None) -> list[dict]:
+def get_riwayat(limit: int = 50, offset: int = 0, db_path=None) -> list[dict]:
     with get_connection(db_path) as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM sandi_logs WHERE status != 'Antri' ORDER BY id DESC LIMIT ?", (limit,))
+        cursor.execute("SELECT * FROM sandi_logs WHERE status != 'Antri' ORDER BY id DESC LIMIT ? OFFSET ?", (limit, offset))
         return [dict(row) for row in cursor.fetchall()]
 
 @retry_on_locked
-def get_riwayat_by_date(date_str: str, db_path=None) -> list[dict]:
+def get_riwayat_by_date(date_str: str, limit: int = 50, offset: int = 0, db_path=None) -> list[dict]:
     """Filter riwayat by local date string (YYYY-MM-DD) based on target_utc."""
     local_dt = datetime.strptime(date_str, '%Y-%m-%d').astimezone()
     start_utc = local_dt.astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
@@ -144,10 +152,23 @@ def get_riwayat_by_date(date_str: str, db_path=None) -> list[dict]:
     with get_connection(db_path) as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT * FROM sandi_logs WHERE target_utc >= ? AND target_utc < ? AND status != 'Antri' ORDER BY id DESC",
-            (start_utc, end_utc)
+            "SELECT * FROM sandi_logs WHERE target_utc >= ? AND target_utc < ? AND status != 'Antri' ORDER BY id DESC LIMIT ? OFFSET ?",
+            (start_utc, end_utc, limit, offset)
         )
         return [dict(row) for row in cursor.fetchall()]
+
+@retry_on_locked
+def get_riwayat_count(date_str: str = None, db_path=None) -> int:
+    with get_connection(db_path) as conn:
+        cursor = conn.cursor()
+        if date_str:
+            local_dt = datetime.strptime(date_str, '%Y-%m-%d').astimezone()
+            start_utc = local_dt.astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+            end_utc = (local_dt + timedelta(days=1)).astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+            cursor.execute("SELECT COUNT(*) FROM sandi_logs WHERE target_utc >= ? AND target_utc < ? AND status != 'Antri'", (start_utc, end_utc))
+        else:
+            cursor.execute("SELECT COUNT(*) FROM sandi_logs WHERE status != 'Antri'")
+        return cursor.fetchone()[0]
 
 @retry_on_locked
 def update_status(id: int, status: str, db_path=None, **kwargs):
@@ -171,14 +192,20 @@ def get_dashboard_counts(date_str=None, db_path=None) -> dict:
         cursor.execute("SELECT COUNT(*) FROM sandi_logs WHERE status='Antri'")
         antri = cursor.fetchone()[0]
         
-        target_date = date_str if date_str else datetime.now().strftime('%Y-%m-%d')
-        local_dt = datetime.strptime(target_date, '%Y-%m-%d').astimezone()
-        start_utc = local_dt.astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-        end_utc = (local_dt + timedelta(days=1)).astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-        
-        cursor.execute("SELECT COUNT(*) FROM sandi_logs WHERE status='Berhasil' AND target_utc >= ? AND target_utc < ?", (start_utc, end_utc))
-        berhasil = cursor.fetchone()[0]
-        cursor.execute("SELECT COUNT(*) FROM sandi_logs WHERE status IN ('Gagal', 'Dibatalkan') AND target_utc >= ? AND target_utc < ?", (start_utc, end_utc))
-        gagal_batal = cursor.fetchone()[0]
-        
-        return {'antri': antri, 'berhasil_hari_ini': berhasil, 'gagal_batal_hari_ini': gagal_batal}
+        if date_str == 'ALL':
+            cursor.execute("SELECT COUNT(*) FROM sandi_logs WHERE status='Berhasil'")
+            berhasil = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM sandi_logs WHERE status IN ('Gagal', 'Dibatalkan')")
+            gagal_batal = cursor.fetchone()[0]
+        else:
+            target_date = date_str if date_str else datetime.now().strftime('%Y-%m-%d')
+            local_dt = datetime.strptime(target_date, '%Y-%m-%d').astimezone()
+            start_utc = local_dt.astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+            end_utc = (local_dt + timedelta(days=1)).astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+            
+            cursor.execute("SELECT COUNT(*) FROM sandi_logs WHERE status='Berhasil' AND target_utc >= ? AND target_utc < ?", (start_utc, end_utc))
+            berhasil = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM sandi_logs WHERE status IN ('Gagal', 'Dibatalkan') AND target_utc >= ? AND target_utc < ?", (start_utc, end_utc))
+            gagal_batal = cursor.fetchone()[0]
+            
+        return {'antri': antri, 'berhasil': berhasil, 'gagal_batal': gagal_batal}

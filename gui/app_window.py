@@ -10,8 +10,8 @@ from gui.input_panel import InputPanel
 from gui.queue_panel import QueuePanel
 
 SIDEBAR_W = 260
-SLIDE_STEP = 26      # pixels per frame
-FRAME_MS   = 12      # ~83 fps
+SLIDE_STEP = 52      # pixels per frame (increased for snappiness)
+FRAME_MS   = 16      # ~60 fps (12ms is too fast for Tkinter and causes lag)
 
 class AutosenderApp(ctk.CTk):
     def __init__(self):

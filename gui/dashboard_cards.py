@@ -75,8 +75,8 @@ class DashboardCards(ctk.CTkFrame):
 
         return value_label
 
-    def refresh(self, date_str=None):
-        if date_str is not None:
+    def refresh(self, date_str="NO_CHANGE"):
+        if date_str != "NO_CHANGE":
             self.current_date = date_str
             
         def _fetch():
@@ -89,5 +89,5 @@ class DashboardCards(ctk.CTkFrame):
 
     def _update_labels(self, counts):
         self.card_antri.configure(text=str(counts.get('antri', 0)))
-        self.card_berhasil.configure(text=str(counts.get('berhasil_hari_ini', 0)))
-        self.card_gagal.configure(text=str(counts.get('gagal_batal_hari_ini', 0)))
+        self.card_berhasil.configure(text=str(counts.get('berhasil', 0)))
+        self.card_gagal.configure(text=str(counts.get('gagal_batal', 0)))

@@ -44,7 +44,7 @@ class InputPanel(ctk.CTkFrame):
         lbl_subtitle.grid(row=1, column=0, sticky="w", padx=24, pady=(0, 24))
         
         # Input Data Label
-        lbl_input = ctk.CTkLabel(self, text="SANDI CUACA (SYNOP/TAFOR/METAR)", font=ctk.CTkFont(family="Inter", size=11, weight="bold"), text_color="#727784")
+        lbl_input = ctk.CTkLabel(self, text="SANDI CUACA (SYNOP/TAFOR/METAR/WXREV)", font=ctk.CTkFont(family="Inter", size=11, weight="bold"), text_color="#727784")
         lbl_input.grid(row=2, column=0, sticky="w", padx=24, pady=(0, 4))
         
         # Textbox (expands to fill middle)
@@ -160,7 +160,7 @@ class InputPanel(ctk.CTkFrame):
         now_utc = self.ntp_manager.get_accurate_utc()
 
         try:
-            can, msg = db.can_schedule(res.tipe, res.target_utc)
+            can, msg = db.can_schedule(res.tipe, res.target_utc, res.stasiun)
             if not can:
                 messagebox.showwarning("Duplikat", msg)
                 self.btn_proses.configure(state="normal")

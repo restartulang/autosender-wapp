@@ -48,12 +48,12 @@ class SupportModal(ctk.CTkToplevel):
         info_frame1 = ctk.CTkFrame(body_frame, fg_color="transparent")
         info_frame1.pack(fill="x")
         ctk.CTkLabel(info_frame1, text="Versi Aplikasi", text_color="#727784").pack(side="left")
-        ctk.CTkLabel(info_frame1, text="v2.1.0-stable", text_color="#0066cc", font=ctk.CTkFont(family="Consolas", weight="bold")).pack(side="right")
+        ctk.CTkLabel(info_frame1, text="v2.2.0-stable", text_color="#0066cc", font=ctk.CTkFont(family="Consolas", weight="bold")).pack(side="right")
         
         info_frame2 = ctk.CTkFrame(body_frame, fg_color="transparent")
         info_frame2.pack(fill="x", pady=(5,0))
         ctk.CTkLabel(info_frame2, text="Terakhir Update", text_color="#727784").pack(side="left")
-        ctk.CTkLabel(info_frame2, text="12 Oktober 2024", text_color="#414753").pack(side="right")
+        ctk.CTkLabel(info_frame2, text="28 Juni 2026", text_color="#414753").pack(side="right")
         
         # Footer
         footer_frame = ctk.CTkFrame(self, fg_color="#eff4ff", corner_radius=0, height=60)

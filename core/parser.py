@@ -7,6 +7,7 @@ class ParseResult:
     tipe: str
     target_utc: datetime
     raw: str
+    stasiun: str = ''
     is_valid: bool = True
     error_msg: str = ''
 
@@ -35,8 +36,8 @@ def format_gts(raw_text: str) -> str:
         header = m.group(1)
         rest = clean[m.end():].strip()
         
-        # Check for AAXX/BBXX (SYNOP/SHIP)
-        m2 = re.match(r'^(AAXX|BBXX)\s\d{5}', rest)
+        # Check for AAXX/BBXX (SYNOP/SHIP) or WXREV
+        m2 = re.match(r'^(AAXX|BBXX|WXREV)\s\d{5}', rest)
         if m2:
             report_id = m2.group(0)
             rest = rest[m2.end():].strip()
@@ -64,7 +65,7 @@ def parse(raw_text: str, now_utc: datetime = None) -> ParseResult:
     # 1. GTS BMKG Format Validation
     # Format: TTAAii CCCC YYGGgg
     # Example: SAID31 WAPP 221200
-    ahl_pattern = re.compile(r'^([A-Z]{4})\d{2}\s[A-Z]{4}\s(\d{2})(\d{2})(\d{2})', re.MULTILINE)
+    ahl_pattern = re.compile(r'^([A-Z]{4})\d{2}\s([A-Z]{4})\s(\d{2})(\d{2})(\d{2})', re.MULTILINE)
     m_ahl = ahl_pattern.search(formatted_text)
     
     has_equal = bool(re.search(r'=\s*$', formatted_text.strip()))
@@ -77,7 +78,8 @@ def parse(raw_text: str, now_utc: datetime = None) -> ParseResult:
                            error_msg="Sandi tidak diakhiri dengan tanda '='.")
 
     ttaa = m_ahl.group(1).upper()
-    dd, hh, mm = int(m_ahl.group(2)), int(m_ahl.group(3)), int(m_ahl.group(4))
+    stasiun = m_ahl.group(2).upper()
+    dd, hh, mm = int(m_ahl.group(3)), int(m_ahl.group(4)), int(m_ahl.group(5))
     
     # Deteksi tipe berdasarkan WMO Header (seperti BMKGSoft)
     if ttaa == 'SAID':
@@ -88,6 +90,8 @@ def parse(raw_text: str, now_utc: datetime = None) -> ParseResult:
         tipe = 'SYNOP'
     elif ttaa == 'FTID':
         tipe = 'TAFOR'
+    elif ttaa == 'MMID':
+        tipe = 'WXREV'
     else:
         tipe = 'UNKNOWN'
         return ParseResult(tipe=tipe, target_utc=now_utc, raw=formatted_text, is_valid=False, 
@@ -99,6 +103,6 @@ def parse(raw_text: str, now_utc: datetime = None) -> ParseResult:
         
     try:
         target = _build_target_utc(dd, hh, mm, now_utc)
-        return ParseResult(tipe=tipe, target_utc=target, raw=formatted_text)
+        return ParseResult(tipe=tipe, target_utc=target, raw=formatted_text, stasiun=stasiun)
     except ValueError as e:
         return ParseResult(tipe=tipe, target_utc=now_utc, raw=formatted_text, is_valid=False, error_msg=f"Tanggal invalid: {e}")

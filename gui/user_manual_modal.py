@@ -116,7 +116,7 @@ class UserManualModal(ctk.CTkToplevel):
         
         # Section 3
         c3 = create_card("Input Data & Pratinjau", "⌨️")
-        add_text(c3, "Saat Anda mengetik sandi cuaca pada kolom input, sistem akan secara otomatis mendeteksi tipe sandi (seperti METAR, SPECI, SYNOP, atau TAFOR) dan mengekstrak waktu target UTC-nya dengan sangat akurat.\n\nJika formatnya sesuai, Anda dapat menekan tombol Proses & Jadwalkan untuk mendaftarkan sandi tersebut ke dalam antrean sistem.", bottom_pad=0)
+        add_text(c3, "Saat Anda mengetik sandi cuaca pada kolom input, sistem akan secara otomatis mendeteksi tipe sandi (METAR, SPECI, SYNOP, TAFOR, atau WXREV), membaca kode stasiun (WAPP, WATQ, dll), dan mengekstrak waktu target UTC-nya dengan akurat.\n\nJika formatnya sesuai, Anda dapat menekan tombol Proses & Jadwalkan untuk mendaftarkan sandi tersebut ke dalam antrean sistem.", bottom_pad=0)
 
         # Section 4
         c_dash = create_card("Dashboard Statistik", "📊")
@@ -134,7 +134,7 @@ class UserManualModal(ctk.CTkToplevel):
         add_text(c4, "Menampilkan daftar pesan yang sedang menunggu waktu untuk dikirim. Anda dapat memantau hitung mundur pengiriman pada kolom Waktu Kirim secara real-time.", bottom_pad=16)
         
         add_text(c4, "Tab 'RIWAYAT PENGIRIMAN'", bold=True, color="#004e9f", bottom_pad=2)
-        add_text(c4, "Menyimpan seluruh rekaman transaksi pengiriman yang sudah selesai, baik yang berstatus Berhasil, Gagal, maupun Dibatalkan. Tersedia fitur kalender untuk menelusuri data di tanggal tertentu.", bottom_pad=0)
+        add_text(c4, "Menyimpan seluruh rekaman transaksi pengiriman yang sudah selesai, baik yang berstatus Berhasil, Gagal, maupun Dibatalkan. Tersedia fitur kalender untuk menelusuri data di tanggal tertentu, dan sistem Halaman (Paginasi) untuk mempermudah navigasi data dalam jumlah besar secara cepat.", bottom_pad=0)
         
         # Section 5
         c5 = create_card("Arti Status & Tombol Aksi", "💡")

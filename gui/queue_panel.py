@@ -148,18 +148,30 @@ class QueuePanel(ctk.CTkFrame):
         self.lbl_footer = ctk.CTkLabel(footer_frame, text="Menampilkan 0 data transmisi", font=ctk.CTkFont(family="Inter", size=12), text_color="#727784", bg_color="transparent")
         self.lbl_footer.place(relx=0, rely=0.5, anchor="w", x=16)
         
-        # Pagination frame removed as requested
+        self.pagination_frame = ctk.CTkFrame(footer_frame, fg_color="transparent")
+        self.btn_prev_page = ctk.CTkButton(self.pagination_frame, text="◀", width=30, height=30, fg_color="transparent", text_color="#004e9f", hover_color="#e5eeff", command=self._prev_page)
+        self.btn_prev_page.pack(side="left", padx=(0, 5))
+        
+        self.lbl_page = ctk.CTkLabel(self.pagination_frame, text="Halaman 1 / 1", font=ctk.CTkFont(family="Inter", size=12, weight="bold"), text_color="#0b1c30")
+        self.lbl_page.pack(side="left", padx=10)
+        
+        self.btn_next_page = ctk.CTkButton(self.pagination_frame, text="▶", width=30, height=30, fg_color="transparent", text_color="#004e9f", hover_color="#e5eeff", command=self._next_page)
+        self.btn_next_page.pack(side="left", padx=(5, 0))
 
         # ── Scrollable Body ───────────────────────────────────────
         self.content_frame = ctk.CTkScrollableFrame(self, fg_color="transparent", corner_radius=0)
         self.content_frame.pack(fill="both", expand=True)
 
         self.antri_rows = []
+        self.row_pool = []
+        self.current_page = 1
+        self.items_per_page = 50
         self.refresh_antri()
         self._update_countdown_loop()
 
     def _switch_tab(self, tab_name):
         self.current_tab = tab_name
+        self.current_page = 1
         if tab_name == "ANTRI":
             self.btn_tab_antri.configure(fg_color="#ffffff", text_color="#004e9f")
             self.indicator_antri.configure(fg_color="#004e9f")
@@ -180,29 +192,61 @@ class QueuePanel(ctk.CTkFrame):
             if hasattr(self, 'on_date_change'):
                 self.on_date_change(self.selected_date)
 
-    def _create_row(self, item, is_antri=False):
+    def _build_row_template(self):
         row_content = ctk.CTkFrame(self.content_frame, fg_color="#ffffff", height=60)
-        row_content.pack(fill="x")
         row_content.pack_propagate(False)
 
-        # Bottom border
         ctk.CTkFrame(row_content, fg_color="#f0f2f5", height=1).place(relx=0, rely=1.0, anchor="sw", relwidth=1)
 
-        # Col 0: ID
-        ctk.CTkLabel(row_content, text=f"#{item['id']}", text_color="#004e9f",
-                     font=ctk.CTkFont(family="Inter", size=13, weight="bold"), anchor="w"
-                     ).place(relx=COL_X[0], rely=0.5, anchor="w", x=PAD_LEFT, relwidth=COL_W[0])
+        lbl_id = ctk.CTkLabel(row_content, text="", text_color="#004e9f",
+                     font=ctk.CTkFont(family="Inter", size=13, weight="bold"), anchor="w")
+        lbl_id.place(relx=COL_X[0], rely=0.5, anchor="w", x=PAD_LEFT, relwidth=COL_W[0])
 
-        # Col 1: TIPE
-        c1 = ctk.CTkFrame(row_content, fg_color="transparent")
-        c1.place(relx=COL_X[1], rely=0.5, anchor="w", relwidth=COL_W[1], relheight=0.6)
+        lbl_tipe = ctk.CTkLabel(row_content, text="", fg_color="#e5eeff", corner_radius=4,
+                     text_color="#004e9f", font=ctk.CTkFont(family="Inter", size=11, weight="bold"))
+        lbl_tipe.place(relx=COL_X[1], rely=0.5, anchor="w", relwidth=0.08)
+
+        lbl_target = ctk.CTkLabel(row_content, text="", text_color="#0b1c30",
+                     font=ctk.CTkFont(family="Inter", size=13), anchor="w")
+        lbl_target.place(relx=COL_X[2], rely=0.5, anchor="w", relwidth=COL_W[2])
+
+        lbl_wk = ctk.CTkLabel(row_content, text="", text_color="#727784",
+                                         font=ctk.CTkFont(family="Inter", size=13), anchor="w")
+        lbl_wk.place(relx=COL_X[3], rely=0.5, anchor="w", relwidth=COL_W[3])
+
+        lbl_status = ctk.CTkLabel(row_content, text="", fg_color="#dcfce7", corner_radius=8,
+                     text_color="#15803d", anchor="center", font=ctk.CTkFont(family="Inter", size=11, weight="bold"))
+        lbl_status.place(relx=COL_X[4], rely=0.5, anchor="w", relwidth=0.12, relheight=0.45)
+
+        action_frame = ctk.CTkFrame(row_content, fg_color="transparent")
+        action_frame.place(relx=COL_X[5], rely=0.5, anchor="w", relwidth=COL_W[5], relheight=0.7)
+
+        btn_cancel = ctk.CTkButton(action_frame, text="✕", width=28, height=28,
+                                    fg_color="transparent", text_color="#727784", hover_color="#ffdad6")
+        btn_view = ctk.CTkButton(action_frame, text="👁", width=28, height=28,
+                                 fg_color="transparent", text_color="#727784", hover_color="#e5eeff")
+        btn_retry = ctk.CTkButton(action_frame, text="↻", width=28, height=28, fg_color="transparent",
+                      text_color="#727784", hover_color="#e5eeff")
+
+        return {
+            'frame': row_content,
+            'lbl_id': lbl_id,
+            'lbl_tipe': lbl_tipe,
+            'lbl_target': lbl_target,
+            'lbl_wk': lbl_wk,
+            'lbl_status': lbl_status,
+            'btn_retry': btn_retry,
+            'btn_view': btn_view,
+            'btn_cancel': btn_cancel
+        }
+
+    def _update_row(self, tpl, item, is_antri):
+        tpl['frame'].pack(fill="x")
+        tpl['lbl_id'].configure(text=f"#{item['id']}")
+        
         tipe = item.get('tipe_sandi', 'UNKNOWN')
-        badge_tipe = ctk.CTkFrame(c1, fg_color="#e5eeff", corner_radius=4, height=26)
-        badge_tipe.pack(side="left")
-        ctk.CTkLabel(badge_tipe, text=tipe, text_color="#004e9f",
-                     font=ctk.CTkFont(family="Inter", size=11, weight="bold")).pack(padx=10, pady=2)
+        tpl['lbl_tipe'].configure(text=f"  {tipe}  ")
 
-        # Col 2: TARGET UTC
         target_utc_str = item.get('target_utc', '')
         dt = datetime.utcnow()
         if target_utc_str:
@@ -210,140 +254,98 @@ class QueuePanel(ctk.CTkFrame):
             fmt_utc = dt.strftime('%H:%M:%S')
         else:
             fmt_utc = "—"
-        ctk.CTkLabel(row_content, text=fmt_utc, text_color="#0b1c30",
-                     font=ctk.CTkFont(family="Inter", size=13), anchor="w"
-                     ).place(relx=COL_X[2], rely=0.5, anchor="w", relwidth=COL_W[2])
+        tpl['lbl_target'].configure(text=fmt_utc)
 
-        lbl_countdown = None
-        # Col 3: WAKTU KIRIM / COUNTDOWN
         if is_antri:
-            lbl_countdown = ctk.CTkLabel(row_content, text="—", text_color="#727784",
-                                         font=ctk.CTkFont(family="Inter", size=13), anchor="w")
-            lbl_countdown.place(relx=COL_X[3], rely=0.5, anchor="w", relwidth=COL_W[3])
+            tpl['lbl_wk'].configure(text="—", text_color="#727784")
         else:
             wk = item.get('waktu_kirim_utc')
             txt_kirim = datetime.strptime(wk, '%Y-%m-%dT%H:%M:%SZ').strftime('%H:%M:%S') if wk else "—"
-            ctk.CTkLabel(row_content, text=txt_kirim, text_color="#0b1c30" if wk else "#727784",
-                         font=ctk.CTkFont(family="Inter", size=13), anchor="w"
-                         ).place(relx=COL_X[3], rely=0.5, anchor="w", relwidth=COL_W[3])
-
-        # Col 4: STATUS
-        c4 = ctk.CTkFrame(row_content, fg_color="transparent")
-        c4.place(relx=COL_X[4], rely=0.5, anchor="w", relwidth=COL_W[4], relheight=0.6)
+            tpl['lbl_wk'].configure(text=txt_kirim, text_color="#0b1c30" if wk else "#727784")
 
         status = "ANTRE" if is_antri else str(item.get('status', 'ANTRE')).upper()
-
         if status == "BERHASIL":
             bg_stat, fg_stat, icon = "#dcfce7", "#15803d", "✓"
-        elif status == "GAGAL":
-            bg_stat, fg_stat, icon = "#fee2e2", "#b91c1c", "✕"
-        elif status == "DIBATALKAN":
+        elif status in ("GAGAL", "DIBATALKAN"):
             bg_stat, fg_stat, icon = "#fee2e2", "#b91c1c", "✕"
         else:
             bg_stat, fg_stat, icon = "#dbeafe", "#1d4ed8", "↻"
 
-        badge_status = ctk.CTkFrame(c4, fg_color=bg_stat, corner_radius=8,
-                                    width=120, height=28)
-        badge_status.pack(side="left")
-        badge_status.pack_propagate(False)
-        ctk.CTkLabel(badge_status, text=f"{icon}  {status.capitalize()}",
-                     text_color=fg_stat, anchor="center",
-                     font=ctk.CTkFont(family="Inter", size=11, weight="bold")
-                     ).pack(expand=True, fill="both", padx=4)
+        tpl['lbl_status'].configure(text=f"{icon}  {status.capitalize()}", fg_color=bg_stat, text_color=fg_stat)
 
-        # Col 5: AKSI
-        c5 = ctk.CTkFrame(row_content, fg_color="transparent")
-        c5.place(relx=COL_X[5], rely=0.5, anchor="w", relwidth=COL_W[5], relheight=0.7)
-
-        action_frame = ctk.CTkFrame(c5, fg_color="transparent")
-        action_frame.pack(side="right", padx=(0, 4))
-
+        tpl['btn_view'].pack(side="right", padx=2)
+        tpl['btn_view'].configure(command=lambda i=item: self._view_item(i))
+        
         if not is_antri and status != "BERHASIL":
-            btn_retry = ctk.CTkButton(action_frame, text="↻", width=28, height=28, fg_color="transparent",
-                          text_color="#727784", hover_color="#e5eeff",
-                          command=lambda id_=item['id']: self._retry_sandi(id_))
-            btn_retry.pack(side="left", padx=2)
-
-        btn_view = ctk.CTkButton(action_frame, text="👁", width=28, height=28,
-                                 fg_color="transparent", text_color="#727784", hover_color="#e5eeff",
-                                 command=lambda: self._view_item(item))
-        btn_view.pack(side="left", padx=2)
+            tpl['btn_retry'].pack(side="right", padx=2)
+            tpl['btn_retry'].configure(command=lambda i=item['id']: self._retry_sandi(i))
+        else:
+            tpl['btn_retry'].pack_forget()
 
         if is_antri:
-            btn_action2 = ctk.CTkButton(action_frame, text="✕", width=28, height=28,
-                                        fg_color="transparent", text_color="#727784", hover_color="#ffdad6",
-                                        command=lambda id_=item['id']: self._cancel_sandi(id_))
-            btn_action2.pack(side="left", padx=2)
+            tpl['btn_cancel'].pack(side="right", padx=2)
+            tpl['btn_cancel'].configure(command=lambda i=item['id']: self._cancel_sandi(i))
+        else:
+            tpl['btn_cancel'].pack_forget()
 
-        return lbl_countdown, dt
+        return tpl['lbl_wk'], dt
 
     def refresh_antri(self):
         if self.current_tab != "ANTRI": return
-        for widget in self.content_frame.winfo_children():
-            widget.destroy()
-        self.antri_rows.clear()
-        
+        if hasattr(self, 'pagination_frame'): self.pagination_frame.place_forget()
         try:
             items = db.get_antri()
-            for item in items:
-                lbl_countdown, dt = self._create_row(item, is_antri=True)
-                self.antri_rows.append({'id': item['id'], 'target_utc': dt.replace(tzinfo=None), 'lbl_count': lbl_countdown})
+            for i in range(len(items), len(self.row_pool)):
+                self.row_pool[i]['frame'].pack_forget()
+                
+            self.antri_rows.clear()
+            for idx, item in enumerate(items):
+                if idx >= len(self.row_pool):
+                    self.row_pool.append(self._build_row_template())
+                tpl = self.row_pool[idx]
+                lbl_count, dt = self._update_row(tpl, item, is_antri=True)
+                self.antri_rows.append({'id': item['id'], 'target_utc': dt.replace(tzinfo=None), 'lbl_count': lbl_count})
+                
             self.lbl_footer.configure(text=f"Menampilkan {len(items)} data transmisi")
         except Exception:
             pass
 
     def refresh_riwayat(self):
         if self.current_tab != "RIWAYAT": return
-        
-        # Hentikan proses render progresif sebelumnya jika ada
-        if hasattr(self, '_render_after_id') and self._render_after_id:
-            self.after_cancel(self._render_after_id)
-            self._render_after_id = None
-        self._render_queue = []
-        
-        for widget in self.content_frame.winfo_children():
-            widget.destroy()
-        self.antri_rows.clear()
-        
         try:
+            offset = (self.current_page - 1) * self.items_per_page
             if self.date_filter_active:
-                items = db.get_riwayat_by_date(self.selected_date)
+                items = db.get_riwayat_by_date(self.selected_date, limit=self.items_per_page, offset=offset)
+                total_items = db.get_riwayat_count(self.selected_date)
             else:
-                items = db.get_riwayat(limit=50)
+                items = db.get_riwayat(limit=self.items_per_page, offset=offset)
+                total_items = db.get_riwayat_count(None)
                 
-            # Gunakan progressive rendering untuk menghindari freeze pada antarmuka
-            self._render_queue = items
-            self._render_chunk_size = 8
-            self._render_next_chunk_riwayat()
-            
+            for i in range(len(items), len(self.row_pool)):
+                self.row_pool[i]['frame'].pack_forget()
+                
+            self.antri_rows.clear()
+            for idx, item in enumerate(items):
+                if idx >= len(self.row_pool):
+                    self.row_pool.append(self._build_row_template())
+                tpl = self.row_pool[idx]
+                self._update_row(tpl, item, is_antri=False)
+                
+            total_pages = max(1, (total_items + self.items_per_page - 1) // self.items_per_page)
+            if hasattr(self, 'lbl_page'):
+                self.lbl_page.configure(text=f"Halaman {self.current_page} / {total_pages}")
+                self.btn_prev_page.configure(state="normal" if self.current_page > 1 else "disabled")
+                self.btn_next_page.configure(state="normal" if self.current_page < total_pages else "disabled")
+                self.pagination_frame.place(relx=1.0, rely=0.5, anchor="e", x=-16)
+                
             if self.date_filter_active:
                 date_display = self._format_display_date(self.selected_date)
-                self.lbl_footer.configure(text=f"Menampilkan {len(items)} data transmisi — {date_display}")
+                self.lbl_footer.configure(text=f"Total: {total_items} data transmisi — {date_display}")
             else:
-                self.lbl_footer.configure(text=f"Menampilkan {len(items)} data transmisi (terbaru)")
+                self.lbl_footer.configure(text=f"Total: {total_items} data transmisi (keseluruhan)")
         except Exception:
             pass
-        
         self._update_filter_buttons()
-
-    def _render_next_chunk_riwayat(self):
-        if not hasattr(self, '_render_queue') or not self._render_queue:
-            return
-            
-        if self.current_tab != "RIWAYAT":
-            self._render_queue = []
-            return
-            
-        chunk = self._render_queue[:self._render_chunk_size]
-        self._render_queue = self._render_queue[self._render_chunk_size:]
-        
-        for item in chunk:
-            self._create_row(item, is_antri=False)
-            
-        if self._render_queue:
-            self._render_after_id = self.after(15, self._render_next_chunk_riwayat)
-        else:
-            self._render_after_id = None
 
     def _update_filter_buttons(self):
         today = datetime.now().strftime('%Y-%m-%d')
@@ -413,6 +415,15 @@ class QueuePanel(ctk.CTkFrame):
                     self.on_date_change(self.selected_date)
             except Exception as e:
                 messagebox.showerror("Error", f"Gagal mengulang sandi: {e}")
+
+    def _prev_page(self):
+        if self.current_page > 1:
+            self.current_page -= 1
+            self.refresh_riwayat()
+
+    def _next_page(self):
+        self.current_page += 1
+        self.refresh_riwayat()
 
     def _view_item(self, item):
         detail_win = ctk.CTkToplevel(self)
@@ -501,18 +512,11 @@ class QueuePanel(ctk.CTkFrame):
             return date_str
 
     def _prev_day(self):
-        """Go to previous day."""
-        try:
-            dt = datetime.strptime(self.selected_date, '%Y-%m-%d')
-            dt -= timedelta(days=1)
-            self.selected_date = dt.strftime('%Y-%m-%d')
-            self.date_filter_active = True
-            self.btn_date_display.configure(text=self._format_display_date(self.selected_date))
-            self.refresh_riwayat()
-            if hasattr(self, 'on_date_change'):
-                self.on_date_change(self.selected_date)
-        except Exception:
-            pass
+        dt = datetime.strptime(self.selected_date, '%Y-%m-%d') - timedelta(days=1)
+        self.selected_date = dt.strftime('%Y-%m-%d')
+        self.date_filter_active = True
+        self.current_page = 1
+        self.refresh_riwayat()
 
     def _next_day(self):
         """Go to next day."""
@@ -522,6 +526,7 @@ class QueuePanel(ctk.CTkFrame):
             if dt.date() <= datetime.now().date():
                 self.selected_date = dt.strftime('%Y-%m-%d')
                 self.date_filter_active = True
+                self.current_page = 1
                 self.btn_date_display.configure(text=self._format_display_date(self.selected_date))
                 self.refresh_riwayat()
                 if hasattr(self, 'on_date_change'):
@@ -532,6 +537,7 @@ class QueuePanel(ctk.CTkFrame):
     def _go_today(self):
         self.selected_date = datetime.now().strftime('%Y-%m-%d')
         self.date_filter_active = True
+        self.current_page = 1
         self.btn_date_display.configure(text=self._format_display_date(self.selected_date))
         self.refresh_riwayat()
         if hasattr(self, 'on_date_change'):
@@ -541,10 +547,11 @@ class QueuePanel(ctk.CTkFrame):
         """Clear date filter — show all recent."""
         self.date_filter_active = False
         self.selected_date = datetime.now().strftime('%Y-%m-%d')
+        self.current_page = 1
         self.btn_date_display.configure(text=self._format_display_date(self.selected_date))
         self.refresh_riwayat()
         if hasattr(self, 'on_date_change'):
-            self.on_date_change(None)
+            self.on_date_change('ALL')
 
     def _open_calendar(self):
         """Open a modern, borderless calendar popup for date selection."""
